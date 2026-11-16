@@ -7,7 +7,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { acquire } from '@kabaevroman/pi-code-core';
 import { decide } from '@kabaevroman/pi-code-core/extensions/permissions';
-import { atomicWrite, textResult, canonical } from '@kabaevroman/pi-code-core/runtime/utils';
+import { atomicWrite, textResult, canonical, agentSummary, humanReadable } from '@kabaevroman/pi-code-core/runtime/utils';
 const spec = Type.Object({prompt:Type.String({minLength:1}),subagent_type:Type.Optional(Type.Union([Type.Literal('Explore'),Type.Literal('Plan'),Type.Literal('general-purpose')])),resume:Type.Optional(Type.String({pattern:'^[0-9a-f-]{36}$'})),max_turns:Type.Optional(Type.Integer({minimum:1,maximum:100})),timeout:Type.Optional(Type.Integer({minimum:1,maximum:3600000}))},{additionalProperties:false});
 export function registerAgents(pi: ExtensionAPI, createSession = createAgentSession): void {
  const state=acquire(pi,'agents'); if(!state)return; const r=state.runtime;
@@ -18,6 +18,7 @@ export function registerAgents(pi: ExtensionAPI, createSession = createAgentSess
   let child:any; let remove=()=>{};
   const id=input.resume??randomUUID();
   try {
+   ctx.ui.setStatus('compat-agents', `${active} subagent${active === 1 ? '' : 's'} running`);
    signal?.throwIfAborted();
    if(!ctx.model)throw Error('Select a parent model before delegating');
    const sessions=join(r.store,'agents','sessions');await mkdir(sessions,{recursive:true});
@@ -39,7 +40,7 @@ export function registerAgents(pi: ExtensionAPI, createSession = createAgentSess
       const fingerprint=JSON.stringify(r.config.permissions);
       const path=normalized.file_path??normalized.path;const target=typeof path==='string'?await canonical(resolve(ctx.cwd,path)):undefined;
       const decision=await decide(aliases[e.toolName],normalized,r.state.mode,r.config,ctx.cwd,r.state.plan?.path);
-      if(decision.action==='deny'||decision.action==='ask'&&!await r.approvals.request(ctx,`Subagent ${role}: ${e.toolName}`,JSON.stringify(normalized),signal))return {block:true,reason:decision.reason};
+      if(decision.action==='deny'||decision.action==='ask'&&!await r.approvals.request(ctx,`Subagent ${role}: ${e.toolName}`,humanReadable(normalized),signal))return {block:true,reason:decision.reason};
       await r.reload(ctx);
       if(fingerprint!==JSON.stringify(r.config.permissions)||(typeof path==='string'&&target!==await canonical(resolve(ctx.cwd,path))))return {block:true,reason:'Parent policy or child target changed during approval'};
      });
@@ -60,12 +61,12 @@ export function registerAgents(pi: ExtensionAPI, createSession = createAgentSess
    const {basename}=await import('node:path');
    const record={id,role,sessionFile:basename(manager.getSessionFile()!),status:limited?'turn_limit':'completed',turns,output};
    await atomicWrite(join(r.store,'agents',id+'.json'),JSON.stringify(record));return record;
-  } finally {remove();child?.dispose();const next=waiters.shift();if(next)next();else active--;}
+  } finally {remove();child?.dispose();const next=waiters.shift();if(next)next();else active--;ctx.ui.setStatus('compat-agents',active ? `${active} subagent${active === 1 ? '' : 's'} running` : undefined);}
  }
- r.register(spec,'Agent','Run an isolated-context Explore, Plan or general-purpose child pi session. Inherits parent model and permissions; child approvals use the parent UI. No recursive delegation. Four children maximum at once.',false,async(input,ctx,signal)=>{const result=await run(input,ctx,signal);return textResult(JSON.stringify(result),result);});
+ r.register(spec,'Agent','Run an isolated-context Explore, Plan or general-purpose child pi session. Inherits parent model and permissions; child approvals use the parent UI. No recursive delegation. Four children maximum at once.',false,async(input,ctx,signal)=>{const result=await run(input,ctx,signal);return textResult(agentSummary(result),result);});
  r.register(Type.Object({agents:Type.Array(spec,{minItems:1,maxItems:8})},{additionalProperties:false}),'AgentBatch','Run independent delegated requests concurrently; preserve reports when a sibling fails.',false,async(input,ctx,signal)=>{
   const results=await Promise.allSettled(input.agents.map((a:any)=>run(a,ctx,signal)));
-  const reports=results.map((v:any)=>v.status==='fulfilled'?v.value:{status:'failed',error:String(v.reason)});return textResult(JSON.stringify(reports),{reports});
+  const reports=results.map((v:any)=>v.status==='fulfilled'?v.value:{status:'failed',error:String(v.reason)});return textResult(reports.map(agentSummary).join('\n\n────────\n\n'),{reports});
  });
 }
 
