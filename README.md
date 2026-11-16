@@ -1,6 +1,6 @@
 # @kabaevroman/pi-code-subagents
 
-Independently installable pi extension: subagents. Former package name: `pi-claude-subagents`.
+Independently installable pi extension: subagents.
 
 This extension depends on `@kabaevroman/pi-code-core@0.5.0`; it does not require any other extension.
 
