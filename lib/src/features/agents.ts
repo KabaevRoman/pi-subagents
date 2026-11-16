@@ -5,9 +5,9 @@ import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { mkdir, readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { acquire } from './shared.ts';
-import { decide } from '../extensions/permissions.ts';
-import { atomicWrite, textResult, canonical } from '../runtime/utils.ts';
+import { acquire } from 'pi-code-core';
+import { decide } from 'pi-code-core/extensions/permissions';
+import { atomicWrite, textResult, canonical } from 'pi-code-core/runtime/utils';
 const spec = Type.Object({prompt:Type.String({minLength:1}),subagent_type:Type.Optional(Type.Union([Type.Literal('Explore'),Type.Literal('Plan'),Type.Literal('general-purpose')])),resume:Type.Optional(Type.String({pattern:'^[0-9a-f-]{36}$'})),max_turns:Type.Optional(Type.Integer({minimum:1,maximum:100})),timeout:Type.Optional(Type.Integer({minimum:1,maximum:3600000}))},{additionalProperties:false});
 export function registerAgents(pi: ExtensionAPI, createSession = createAgentSession): void {
  const state=acquire(pi,'agents'); if(!state)return; const r=state.runtime;
